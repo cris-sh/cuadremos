@@ -1,8 +1,8 @@
-# Cuadramos
+# Cuadremos
 
 > **Compartir gastos. Mantener las cuentas claras.**
 
-Cuadramos es una aplicación para gestionar y dividir gastos compartidos entre amigos, familiares, compañeros de viaje o cualquier grupo de personas.
+Cuadremos es una aplicación para gestionar y dividir gastos compartidos entre amigos, familiares, compañeros de viaje o cualquier grupo de personas.
 
 El proyecto nace como una iniciativa de **desarrollo personal** para construir una aplicación real utilizando buenas práctivas de ingeniería de software, arquitectura por capas, seguridad, testing, migraciones de base de datos y despliegue automatizado.
 
@@ -10,7 +10,7 @@ El proyecto nace como una iniciativa de **desarrollo personal** para construir u
 
 ## Objetivo
 
-El objetivo de Cuadramos es facilitar la gestión de gastos grupales sin tener que hacer cuentas manualmente.
+El objetivo de Cuadremos es facilitar la gestión de gastos grupales sin tener que hacer cuentas manualmente.
 
 La aplicación te permitira:
 
