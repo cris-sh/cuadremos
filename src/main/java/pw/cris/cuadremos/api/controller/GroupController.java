@@ -3,6 +3,8 @@ package pw.cris.cuadremos.api.controller;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import pw.cris.cuadremos.application.dto.AddMemberRequest;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
@@ -22,9 +24,9 @@ public class GroupController {
     @ResponseStatus(HttpStatus.CREATED)
     public GroupResponse createGroup(
             @Valid @RequestBody CreateGroupRequest request,
-            @RequestHeader("X-User-Id") UUID userId
+            @AuthenticationPrincipal Jwt jwt
             ) {
-        return groupService.createGroup(request, userId);
+        return groupService.createGroup(request, currentUserId(jwt));
     }
 
     @PostMapping("/{groupId}/members")
@@ -38,6 +40,11 @@ public class GroupController {
     @GetMapping("/{groupId}")
     public GroupResponse getGroup(@PathVariable UUID groupId) {
         return groupService.getGroup(groupId);
+    }
+
+    /** The token subject carries the authenticated user's id */
+    private UUID currentUserId(Jwt jwt) {
+        return UUID.fromString(jwt.getSubject());
     }
 
 }

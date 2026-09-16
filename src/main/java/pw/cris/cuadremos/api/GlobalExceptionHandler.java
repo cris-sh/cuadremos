@@ -1,5 +1,6 @@
 package pw.cris.cuadremos.api;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -8,10 +9,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import pw.cris.cuadremos.domain.exception.EmailAlreadyExistsException;
 import pw.cris.cuadremos.domain.exception.UsernameAlreadyExistsException;
 
+import org.springframework.security.core.AuthenticationException;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -43,12 +46,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+        // This handler is the last resort: anything landing here is a bug.
+        log.error("Unhandled exception", ex);
         return buildErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ResponseEntity<Map<String, Object>> handleAuthentication(AuthenticationException ex) {
+        // Deliberately generic: never reveal whether the user exists.
+        return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid credentials");
     }
 
     private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String message) {

@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class CuadremosUserDetailsServiceTest {
 
-    private static final String PASSWORD_HASH = "$2a$10$7Q9J1Z1Z1Z1Z1Z1Z1Z1Z1OeW";
+    private static final String PASSWORD_HASH = "$argon2id$v=19$m=65536,t=3,p=1$c29tZXNhbHQ$RdescudvJCsgt3ub+b+dWRWJTmaaJObG";
 
     @Mock
     private UserRepository userRepository;
