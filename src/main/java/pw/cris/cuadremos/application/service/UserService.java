@@ -11,6 +11,8 @@ import pw.cris.cuadremos.domain.exception.UsernameAlreadyExistsException;
 import pw.cris.cuadremos.domain.model.User;
 import pw.cris.cuadremos.infrastructure.persistence.UserRepository;
 
+import java.util.Locale;
+
 @Service
 @RequiredArgsConstructor
 public class UserService {
@@ -20,17 +22,21 @@ public class UserService {
 
     @Transactional
     public UserResponse register(RegisterRequest request) {
-        if (userRepository.existsByUsername(request.username())) {
-            throw new UsernameAlreadyExistsException(request.username());
+        // Normalize once, then use the same values for both the check and the insert
+        String username = request.username().toLowerCase(Locale.ROOT);
+        String email = request.email().toLowerCase(Locale.ROOT);
+
+        if (userRepository.existsByUsername(username)) {
+            throw new UsernameAlreadyExistsException(username);
         }
-        if (userRepository.existsByEmail(request.email())) {
-            throw new EmailAlreadyExistsException(request.email());
+        if (userRepository.existsByEmail(email)) {
+            throw new EmailAlreadyExistsException(email);
         }
 
         User user = User.builder()
-                .username(request.username().toLowerCase())
+                .username(username)
                 .name(request.name())
-                .email(request.email().toLowerCase())
+                .email(email)
                 .password(passwordEncoder.encode(request.password()))
                 .build();
 
