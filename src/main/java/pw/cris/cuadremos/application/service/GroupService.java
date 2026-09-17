@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.UserResponse;
+import pw.cris.cuadremos.domain.exception.NotGroupMemberException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.User;
 import pw.cris.cuadremos.infrastructure.persistence.GroupRepository;
@@ -38,9 +39,11 @@ public class GroupService {
     }
 
     @Transactional
-    public GroupResponse addMember(UUID groupId, String username) {
+    public GroupResponse addMember(UUID groupId, UUID callerId, String username) {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+
+        requireMember(group, callerId);
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + username));
@@ -54,12 +57,23 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public GroupResponse getGroup(UUID groupId) {
+    public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+
+        requireMember(group, callerId);
+
         return toResponse(group);
     }
 
+    private void requireMember(Group group, UUID userId) {
+        boolean isMember = group.getMembers().stream()
+                .anyMatch(member -> member.getId().equals(userId));
+
+        if (!isMember) {
+            throw new NotGroupMemberException(userId, group.getId());
+        }
+    }
 
     private GroupResponse toResponse(Group group) {
         Set<UserResponse> members = group.getMembers().stream()

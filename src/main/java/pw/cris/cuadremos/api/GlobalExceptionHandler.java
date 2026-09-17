@@ -7,6 +7,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import pw.cris.cuadremos.domain.exception.EmailAlreadyExistsException;
+import pw.cris.cuadremos.domain.exception.NotGroupMemberException;
 import pw.cris.cuadremos.domain.exception.UsernameAlreadyExistsException;
 
 import org.springframework.security.core.AuthenticationException;
@@ -60,6 +61,11 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleAuthentication(AuthenticationException ex) {
         // Deliberately generic: never reveal whether the user exists.
         return buildErrorResponse(HttpStatus.UNAUTHORIZED, "Invalid credentials");
+    }
+
+    @ExceptionHandler(NotGroupMemberException.class)
+    public ResponseEntity<Map<String, Object>> handleNotGroupMember(NotGroupMemberException ex) {
+        return buildErrorResponse(HttpStatus.FORBIDDEN, "You are not a member of this group");
     }
 
     private ResponseEntity<Map<String, Object>> buildErrorResponse(HttpStatus status, String message) {
