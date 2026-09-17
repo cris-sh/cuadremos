@@ -26,7 +26,7 @@ public class User {
     @Size(min = 3, max = 32)
     @Pattern(
             regexp = "^[a-zA-Z0-9._]+$",
-            message = "Solo puede contener letras, números, puntos y guiones bajos"
+            message = "Can only contain letters, numbers, dots and underscores"
     )
     @Column(nullable = false, unique = true, length = 32)
     private String username;
@@ -39,7 +39,7 @@ public class User {
     private String email;
 
     @NotBlank
-    @Size(min = 8, max = 128, message = "La contraseña debe tener mas de 8 caracteres")
+    @Size(min = 8, max = 128, message = "Password must be at least 8 characters")
     @Column(nullable = false, length = 255)
     private String password;
 
@@ -49,5 +49,17 @@ public class User {
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User user)) return false;
+        return id != null && id.equals(user.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return getClass().hashCode();
     }
 }
