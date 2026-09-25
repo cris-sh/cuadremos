@@ -50,4 +50,24 @@ public class User {
     protected void onCreate() {
         this.createdAt = Instant.now();
     }
+
+    /*
+     * Two users are the same user when they share a database id.
+     * An unsaved user (id still null) is only equal to itself.
+     */
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof User other)) return false;
+        return getId() != null && getId().equals(other.getId());
+    }
+
+    /*
+     * Constant on purpose: the id is still null until the user is saved,
+     * so hashing by id would change the hash and "lose" the user inside a HashSet.
+     */
+    @Override
+    public int hashCode() {
+        return User.class.hashCode();
+    }
 }
