@@ -5,8 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
-import pw.cris.cuadremos.application.dto.UserResponse;
+import pw.cris.cuadremos.application.dto.MemberResponse;
 import pw.cris.cuadremos.domain.model.Group;
+import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.domain.model.User;
 import pw.cris.cuadremos.infrastructure.persistence.GroupRepository;
 import pw.cris.cuadremos.infrastructure.persistence.UserRepository;
@@ -27,11 +28,7 @@ public class GroupService {
         User creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with id: " + creatorId));
 
-        Group group = Group.builder()
-                .name(request.name())
-                .build();
-
-        group.getMembers().add(creator);
+        Group group = Group.create(request.name(), creator);
 
         Group saved = groupRepository.save(group);
         return toResponse(saved);
@@ -45,11 +42,11 @@ public class GroupService {
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + username));
 
-        if (group.getMembers().contains(user)) {
+        if (group.hasMember(user)) {
             throw new IllegalArgumentException("User is already a member of the group");
         }
 
-        group.getMembers().add(user);
+        group.addMember(user, GroupRole.MEMBER);
         return toResponse(groupRepository.save(group));
     }
 
@@ -62,12 +59,13 @@ public class GroupService {
 
 
     private GroupResponse toResponse(Group group) {
-        Set<UserResponse> members = group.getMembers().stream()
-                .map(user -> new UserResponse(
-                        user.getId(),
-                        user.getUsername(),
-                        user.getName(),
-                        user.getEmail()
+        Set<MemberResponse> members = group.getMembers().stream()
+                .map(member -> new MemberResponse(
+                        member.getUser().getId(),
+                        member.getUser().getUsername(),
+                        member.getUser().getName(),
+                        member.getRole(),
+                        group.isOwnedBy(member.getUser())
                 ))
                 .collect(Collectors.toSet());
 

@@ -7,6 +7,6 @@ import java.util.UUID;
 public record GroupResponse(
         UUID id,
         String name,
-        Set<UserResponse> members,
+        Set<MemberResponse> members,
         Instant createdAt
 ) {}

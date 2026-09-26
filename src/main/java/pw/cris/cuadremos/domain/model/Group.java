@@ -24,14 +24,14 @@ public class Group {
     @Column(nullable = false)
     private String name;
 
-    @ManyToMany
-    @JoinTable(
-        name = "group_members",
-        joinColumns = @JoinColumn(name = "group_id"),
-        inverseJoinColumns = @JoinColumn(name = "user_id")
-    )
+    /* The owner is always an admin as well; ownership only adds owner-only powers on top */
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "owner_id", nullable = false)
+    private User owner;
+
+    @OneToMany(mappedBy = "group", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
-    private Set<User> members = new HashSet<>();
+    private Set<GroupMember> members = new HashSet<>();
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
@@ -40,4 +40,34 @@ public class Group {
     protected void onCreate() {
         this.createdAt = Instant.now();
     }
+
+    /**
+     * The one way to start a group: its creator owns it and joins it as an admin,
+     * so a group can never exist with an owner who is not also one of its admins.
+     */
+    public static Group create(String name, User owner) {
+        Group group = Group.builder()
+                .name(name)
+                .owner(owner)
+                .build();
+        group.addMember(owner, GroupRole.ADMIN);
+        return group;
+    }
+
+    public boolean isOwnedBy(User user) {
+        return owner.equals(user);
+    }
+
+    public void addMember(User user, GroupRole role) {
+        members.add(GroupMember.builder()
+                .group(this)
+                .user(user)
+                .role(role)
+                .build());
+    }
+
+    public boolean hasMember(User user) {
+        return members.stream().anyMatch(member -> member.getUser().equals(user));
+    }
+
 }

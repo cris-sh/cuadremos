@@ -8,13 +8,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
-import pw.cris.cuadremos.application.dto.UserResponse;
+import pw.cris.cuadremos.application.dto.MemberResponse;
 import pw.cris.cuadremos.domain.model.Group;
+import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.domain.model.User;
 import pw.cris.cuadremos.infrastructure.persistence.GroupRepository;
 import pw.cris.cuadremos.infrastructure.persistence.UserRepository;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,12 +47,13 @@ class GroupServiceTest {
                 .build();
     }
 
-    private Group group(User... members) {
-        Group group = Group.builder()
-                .id(UUID.randomUUID())
-                .name("trip to Cucuta")
-                .build();
-        group.getMembers().addAll(List.of(members));
+    /* A group owned by its first user; the rest join as plain members */
+    private Group group(User owner, User... members) {
+        Group group = Group.create("trip to Cucuta", owner);
+        group.setId(UUID.randomUUID());
+        for (User member : members) {
+            group.addMember(member, GroupRole.MEMBER);
+        }
         return group;
     }
 
@@ -76,8 +77,24 @@ class GroupServiceTest {
 
         assertThat(response.name()).isEqualTo("trip to Cucuta");
         assertThat(response.members())
-                .extracting(UserResponse::username)
+                .extracting(MemberResponse::username)
                 .containsExactly("cris");
+    }
+
+    @Test
+    @DisplayName("makes the creator the owner and an admin of the new group")
+    void makesCreatorOwnerAndAdmin() {
+        User creator = user("cris");
+        when(userRepository.findById(creator.getId())).thenReturn(Optional.of(creator));
+        saveReturnsItsArgument();
+
+        GroupResponse response = groupService.createGroup(
+                new CreateGroupRequest("trip to Cucuta"), creator.getId()
+        );
+
+        MemberResponse cris = response.members().iterator().next();
+        assertThat(cris.role()).isEqualTo(GroupRole.ADMIN);
+        assertThat(cris.owner()).isTrue();
     }
 
     @Test
@@ -109,8 +126,30 @@ class GroupServiceTest {
         GroupResponse response = groupService.addMember(group.getId(), "yuka");
 
         assertThat(response.members())
-                .extracting(UserResponse::username)
+                .extracting(MemberResponse::username)
                 .containsExactlyInAnyOrder("cris", "yuka");
+    }
+
+    @Test
+    @DisplayName("adds new users as plain members, not admins or owners")
+    void addsNewUsersAsMembers() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris);
+
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+        when(userRepository.findByUsername("yuka")).thenReturn(Optional.of(yuka));
+        saveReturnsItsArgument();
+
+        GroupResponse response = groupService.addMember(group.getId(), "yuka");
+
+        MemberResponse addedYuka = response.members().stream()
+                .filter(member -> member.username().equals("yuka"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(addedYuka.role()).isEqualTo(GroupRole.MEMBER);
+        assertThat(addedYuka.owner()).isFalse();
     }
 
     @Test
@@ -146,9 +185,9 @@ class GroupServiceTest {
 
         // A separate object with the same id: what a fresh database lookup hands back
         User sameCrisFromDatabase = User.builder()
-                        .id(cris.getId())
-                        .username("cris")
-                        .build();
+                .id(cris.getId())
+                .username("cris")
+                .build();
 
         when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
         when(userRepository.findByUsername("cris")).thenReturn(Optional.of(sameCrisFromDatabase));
