@@ -20,9 +20,11 @@
 
 ## ✨ What is Cuadremos?
 
-Cuadremos is a REST API for sharing expenses with friends, family, roommates or travel buddies — in the spirit of Splitwise. Create a group, log who paid for what, and let the API work out who owes whom, so money never gets awkward between friends.
+Cuadremos is a REST API for splitting shared expenses with friends, family, roommates or travel buddies. Create a group, log who paid for what, and let the API work out who owes whom — and the fewest payments needed to settle up.
 
-It is also a **personal learning project**: a real-world backend built with layered architecture, security, testing, database migrations and CI from day one.
+If you've used apps like Splitwise or Tricount, the idea will feel familiar.
+
+Cuadremos started as a personal project to learn backend engineering by building something real, so it's built with layered architecture, security, testing, database migrations and CI from day one.
 
 ## 🚦 Status
 
