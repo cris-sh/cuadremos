@@ -6,7 +6,9 @@ import org.springframework.transaction.annotation.Transactional;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
+import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.domain.model.Group;
+import pw.cris.cuadremos.domain.model.GroupMember;
 import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.domain.model.User;
 import pw.cris.cuadremos.infrastructure.persistence.GroupRepository;
@@ -35,9 +37,12 @@ public class GroupService {
     }
 
     @Transactional
-    public GroupResponse addMember(UUID groupId, String username) {
+    public GroupResponse addMember(UUID groupId, UUID callerId, String username) {
         Group group = groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+
+        // Check permissions first, so outsiders learn nothing about which usernames exist
+        requireAdmin(group, callerId);
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + username));
@@ -51,10 +56,26 @@ public class GroupService {
     }
 
     @Transactional(readOnly = true)
-    public GroupResponse getGroup(UUID groupId) {
-        Group group = groupRepository.findById(groupId)
-                .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+    public GroupResponse getGroup(UUID groupId, UUID callerId) {
+        Group group = findGroup(groupId);
+        requireMember(group, callerId);
         return toResponse(group);
+    }
+
+    private Group findGroup(UUID groupId) {
+        return groupRepository.findById(groupId)
+                .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+    }
+
+    private GroupMember requireMember(Group group, UUID userId) {
+        return group.findMember(userId)
+                .orElseThrow(() -> new GroupAccessDeniedException("User is not a member of the group"));
+    }
+
+    private void requireAdmin(Group group, UUID userId) {
+        if (!requireMember(group, userId).isAdmin()) {
+            throw new GroupAccessDeniedException("User is not an admin of the group");
+        }
     }
 
 

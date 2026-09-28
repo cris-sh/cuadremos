@@ -13,6 +13,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.service.GroupService;
+import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.infrastructure.security.SecurityConfig;
 
 import java.time.Instant;
@@ -25,7 +26,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(GroupController.class)
@@ -33,6 +36,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GroupControllerTest {
 
     private static final String CREATE_BODY = "{\"name\": \"Trip to Cucuta\"}";
+    private static final String ADD_MEMBER_BODY = "{\"username\": \"yuka\"}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -46,6 +50,15 @@ class GroupControllerTest {
 
     @MockitoBean
     private UserDetailsService userDetailsService;
+
+    private GroupResponse someGroup() {
+        return new GroupResponse(
+                UUID.randomUUID(),
+                "Trip to Cucuta",
+                Set.of(),
+                Instant.now()
+        );
+    }
 
     @Test
     @DisplayName("rejects group creation when no token is sent")
@@ -74,6 +87,53 @@ class GroupControllerTest {
         ).andExpect(status().isCreated());
 
         verify(groupService).createGroup(any(CreateGroupRequest.class), eq(userId));
+    }
+
+    @Test
+    @DisplayName("tells the service who is asking to see a group")
+    void passesCallerWhenGettingGroup() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(groupService.getGroup(groupId, userId)).thenReturn(someGroup());
+
+        mockMvc.perform(get("/api/groups/{groupId}", groupId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+        ).andExpect(status().isOk());
+
+        verify(groupService).getGroup(groupId, userId);
+    }
+
+    @Test
+    @DisplayName("tells the service who is asking to add a member")
+    void passesCallerWhenAddingMember() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(groupService.addMember(groupId, userId, "yuka")).thenReturn(someGroup());
+
+        mockMvc.perform(post("/api/groups/{groupId}/members", groupId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(ADD_MEMBER_BODY)
+        ).andExpect(status().isOk());
+
+        verify(groupService).addMember(groupId, userId, "yuka");
+    }
+
+    @Test
+    @DisplayName("answers 403 with the reason when the caller lacks permission")
+    void answersForbiddenWhenAccessIsDenied() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(groupService.addMember(groupId, userId, "yuka"))
+                .thenThrow(new GroupAccessDeniedException("User is not an admin of the group"));
+
+        mockMvc.perform(post("/api/groups/{groupId}/members", groupId)
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(ADD_MEMBER_BODY)
+                )
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("User is not an admin of the group"));
     }
 
 }

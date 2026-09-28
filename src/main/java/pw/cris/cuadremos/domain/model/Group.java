@@ -5,6 +5,7 @@ import lombok.*;
 
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -70,4 +71,10 @@ public class Group {
         return members.stream().anyMatch(member -> member.getUser().equals(user));
     }
 
+    /* The membership of the user with this id, if they belong to the group. */
+    public Optional<GroupMember> findMember(UUID userId) {
+        return members.stream()
+                .filter(member -> member.getUser().getId().equals(userId))
+                .findFirst();
+    }
 }

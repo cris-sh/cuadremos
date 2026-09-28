@@ -32,14 +32,15 @@ public class GroupController {
     @PostMapping("/{groupId}/members")
     public GroupResponse addMember(
             @PathVariable UUID groupId,
-            @Valid @RequestBody AddMemberRequest request
+            @Valid @RequestBody AddMemberRequest request,
+            @AuthenticationPrincipal Jwt jwt
     ) {
-        return groupService.addMember(groupId, request.username());
+        return groupService.addMember(groupId, currentUserId(jwt), request.username());
     }
 
     @GetMapping("/{groupId}")
-    public GroupResponse getGroup(@PathVariable UUID groupId) {
-        return groupService.getGroup(groupId);
+    public GroupResponse getGroup(@PathVariable UUID groupId, @AuthenticationPrincipal Jwt jwt) {
+        return groupService.getGroup(groupId, currentUserId(jwt));
     }
 
     /** The token subject carries the authenticated user's id */

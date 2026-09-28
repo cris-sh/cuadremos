@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
+import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.domain.model.User;
@@ -21,6 +22,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -123,7 +125,7 @@ class GroupServiceTest {
 
         saveReturnsItsArgument();
 
-        GroupResponse response = groupService.addMember(group.getId(), "yuka");
+        GroupResponse response = groupService.addMember(group.getId(), cris.getId(), "yuka");
 
         assertThat(response.members())
                 .extracting(MemberResponse::username)
@@ -141,7 +143,7 @@ class GroupServiceTest {
         when(userRepository.findByUsername("yuka")).thenReturn(Optional.of(yuka));
         saveReturnsItsArgument();
 
-        GroupResponse response = groupService.addMember(group.getId(), "yuka");
+        GroupResponse response = groupService.addMember(group.getId(), cris.getId(), "yuka");
 
         MemberResponse addedYuka = response.members().stream()
                 .filter(member -> member.username().equals("yuka"))
@@ -153,12 +155,43 @@ class GroupServiceTest {
     }
 
     @Test
+    @DisplayName("refuses to let a plain member add people")
+    void refusesPlainMemberAddingPeople() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.addMember(group.getId(), yuka.getId(), "ana"))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("admin");
+
+        verify(userRepository, never()).findByUsername(anyString());
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let someone outside the group add people")
+    void refusesOutsiderAddingPeople() {
+        Group group = group(user("cris"));
+        User outsider = user("outsider");
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.addMember(group.getId(), outsider.getId(), "ana"))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("not a member");
+
+        verify(userRepository, never()).findByUsername(anyString());
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
     @DisplayName("fails to add a member when the group does not exist")
     void failsWhenGroupDoesNotExist() {
         UUID ghostGroupId = UUID.randomUUID();
         when(groupRepository.findById(ghostGroupId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> groupService.addMember(ghostGroupId, "yuka"))
+        assertThatThrownBy(() -> groupService.addMember(ghostGroupId, UUID.randomUUID(), "yuka"))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(groupRepository, never()).save(any());
@@ -167,11 +200,12 @@ class GroupServiceTest {
     @Test
     @DisplayName("fails to add a member when the user does not exist")
     void failsWhenUserDoesNotExist() {
-        Group group = group(user("cris"));
+        User cris = user("cris");
+        Group group = group(cris);
         when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
         when(userRepository.findByUsername("ghost")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> groupService.addMember(group.getId(), "ghost"))
+        assertThatThrownBy(() -> groupService.addMember(group.getId(), cris.getId(), "ghost"))
                 .isInstanceOf(IllegalArgumentException.class);
 
         verify(groupRepository, never()).save(any());
@@ -192,7 +226,7 @@ class GroupServiceTest {
         when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
         when(userRepository.findByUsername("cris")).thenReturn(Optional.of(sameCrisFromDatabase));
 
-        assertThatThrownBy(() -> groupService.addMember(group.getId(), "cris"))
+        assertThatThrownBy(() -> groupService.addMember(group.getId(), cris.getId(), "cris"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already a member");
 
@@ -202,16 +236,28 @@ class GroupServiceTest {
     // --- getGroup ---
 
     @Test
-    @DisplayName("returns the group with its members")
-    void returnsGroupWithMembers() {
-        Group group = group(user("cris"), user("yuka"));
+    @DisplayName("lets any member see the group, not only admins")
+    void letsPlainMemberSeeGroup() {
+        User yuka = user("yuka");
+        Group group = group(user("cris"), yuka);
         when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
 
-        GroupResponse response = groupService.getGroup(group.getId());
+        GroupResponse response = groupService.getGroup(group.getId(), yuka.getId());
 
         assertThat(response.id()).isEqualTo(group.getId());
         assertThat(response.name()).isEqualTo("trip to Cucuta");
         assertThat(response.members()).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("refuses to show the group to someone outside it")
+    void refusesOutsiderSeeingGroup() {
+        Group group = group(user("cris"));
+        User outsider = user("outsider");
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.getGroup(group.getId(), outsider.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class);
     }
 
     @Test
@@ -220,7 +266,7 @@ class GroupServiceTest {
         UUID groupGhostId = UUID.randomUUID();
         when(groupRepository.findById(groupGhostId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> groupService.getGroup(groupGhostId))
+        assertThatThrownBy(() -> groupService.getGroup(groupGhostId, UUID.randomUUID()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 }

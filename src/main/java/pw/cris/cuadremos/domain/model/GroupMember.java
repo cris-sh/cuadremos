@@ -30,4 +30,8 @@ public class GroupMember {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private GroupRole role;
+
+    public boolean isAdmin() {
+        return role == GroupRole.ADMIN;
+    }
 }
