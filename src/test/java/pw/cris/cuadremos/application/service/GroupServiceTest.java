@@ -233,6 +233,165 @@ class GroupServiceTest {
         verify(groupRepository, never()).save(any());
     }
 
+    // --- removeMember ---
+
+    @Test
+    @DisplayName("lets an admin remove a plain member")
+    void letsAdminRemoveMember() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.removeMember(group.getId(), cris.getId(), yuka.getId());
+
+        assertThat(group.hasMember(yuka)).isFalse();
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("lets the owner remove an admin")
+    void letsOwnerRemoveAdmin() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.removeMember(group.getId(), cris.getId(), ana.getId());
+
+        assertThat(group.hasMember(ana)).isFalse();
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("lets a plain member leave the group")
+    void letsMemberLeave() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.removeMember(group.getId(), yuka.getId(), yuka.getId());
+
+        assertThat(group.hasMember(yuka)).isFalse();
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("lets an admin who is not the owner leave the group")
+    void letsAdminLeave() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.removeMember(group.getId(), ana.getId(), ana.getId());
+
+        assertThat(group.hasMember(ana)).isFalse();
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("refuses to let a plain member remove people")
+    void refusesPlainMemberRemovingPeople() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        User pepe = user("pepe");
+        Group group = group(cris, yuka, pepe);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), yuka.getId(), pepe.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only admins");
+
+        assertThat(group.hasMember(pepe)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let someone outside the group remove people")
+    void refusesOutsiderRemovingPeople() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), outsider.getId(), cris.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("not a member");
+
+        assertThat(group.hasMember(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let an admin remove another admin")
+    void refusesAdminRemovingAdmin() {
+        User cris = user("cris");
+        User ana = user("ana");
+        User luis = user("luis");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        group.addMember(luis, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), ana.getId(), luis.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only the owner can remove admins");
+
+        assertThat(group.hasMember(luis)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let anyone remove the owner")
+    void refusesRemovingOwner() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), ana.getId(), cris.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("owner");
+
+        assertThat(group.hasMember(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let the owner leave without transferring ownership first")
+    void refusesOwnerLeaving() {
+        User cris = user("cris");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), cris.getId(), cris.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Transfer ownership");
+
+        assertThat(group.hasMember(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("fails to remove someone who is not in the group")
+    void failsWhenTargetIsNotAMember() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.removeMember(group.getId(), cris.getId(), outsider.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Target");
+
+        verify(groupRepository, never()).save(any());
+    }
+
     // --- getGroup ---
 
     @Test

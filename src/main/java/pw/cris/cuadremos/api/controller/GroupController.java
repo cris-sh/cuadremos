@@ -43,6 +43,16 @@ public class GroupController {
         return groupService.getGroup(groupId, currentUserId(jwt));
     }
 
+    @DeleteMapping("/{groupId}/members/{memberId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removeMember(
+            @PathVariable UUID groupId,
+            @PathVariable UUID memberId,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        groupService.removeMember(groupId, currentUserId(jwt), memberId);
+    }
+
     /** The token subject carries the authenticated user's id */
     private UUID currentUserId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());

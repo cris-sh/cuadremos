@@ -67,11 +67,17 @@ public class Group {
                 .build());
     }
 
+    public void removeMember(User user) {
+        members.removeIf(member -> member.getUser().equals(user));
+    }
+
     public boolean hasMember(User user) {
         return members.stream().anyMatch(member -> member.getUser().equals(user));
     }
 
-    /* The membership of the user with this id, if they belong to the group. */
+    /**
+     * The membership of the user with this id, if they belong to the group.
+     */
     public Optional<GroupMember> findMember(UUID userId) {
         return members.stream()
                 .filter(member -> member.getUser().getId().equals(userId))

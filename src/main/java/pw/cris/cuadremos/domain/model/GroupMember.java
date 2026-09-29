@@ -34,4 +34,8 @@ public class GroupMember {
     public boolean isAdmin() {
         return role == GroupRole.ADMIN;
     }
+
+    public boolean isOwner() {
+        return group.getOwner().equals(user);
+    }
 }

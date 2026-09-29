@@ -25,7 +25,9 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -134,6 +136,44 @@ class GroupControllerTest {
                 )
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.message").value("User is not an admin of the group"));
+    }
+
+    @Test
+    @DisplayName("answers 204 and tells the service who is removing whom")
+    void passesCallerAndTargetWhenRemovingMember() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID callerId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/groups/{groupId}/members/{memberId}", groupId, targetId)
+                .with(jwt().jwt(token -> token.subject(callerId.toString())))
+        ).andExpect(status().isNoContent());
+
+        verify(groupService).removeMember(groupId, callerId, targetId);
+    }
+
+    @Test
+    @DisplayName("rejects removing a member when no token is sent")
+    void rejectsRemovingMemberWithoutToken() throws Exception {
+        mockMvc.perform(delete("/api/groups/{groupId}/members/{memberId}", UUID.randomUUID(), UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+
+        verify(groupService, never()).removeMember(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 400 with the reason when the owner tries to leave")
+    void answersBadRequestWhenOwnerLeaves() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        doThrow(new IllegalArgumentException("Transfer ownership before leaving the group"))
+                .when(groupService).removeMember(groupId, userId, userId);
+
+        mockMvc.perform(delete("/api/groups/{groupId}/members/{memberId}", groupId, userId)
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Transfer ownership before leaving the group"));
     }
 
 }

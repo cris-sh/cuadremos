@@ -55,6 +55,24 @@ public class GroupService {
         return toResponse(groupRepository.save(group));
     }
 
+    @Transactional
+    public void removeMember(UUID groupId, UUID callerId, UUID targetId) {
+        Group group = findGroup(groupId);
+
+        // Check membership first, so outsiders learn nothing about who belongs to the group
+        GroupMember caller = requireMember(group, callerId);
+        GroupMember target = requireTarget(group, targetId);
+
+        if (!callerId.equals(targetId)) {
+            requireCanRemove(caller, target);
+        } else if (target.isOwner()) {
+            throw new IllegalArgumentException("Transfer ownership before leaving the group");
+        }
+
+        group.removeMember(target.getUser());
+        groupRepository.save(group);
+    }
+
     @Transactional(readOnly = true)
     public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = findGroup(groupId);
@@ -72,9 +90,28 @@ public class GroupService {
                 .orElseThrow(() -> new GroupAccessDeniedException("User is not a member of the group"));
     }
 
+    /* Unlike requireMember, a missing target is a bad request, not a permission problem */
+    private GroupMember requireTarget(Group group, UUID userId) {
+        return group.findMember(userId)
+                .orElseThrow(() -> new IllegalArgumentException("Target user is not a member of the group"));
+    }
+
     private void requireAdmin(Group group, UUID userId) {
         if (!requireMember(group, userId).isAdmin()) {
             throw new GroupAccessDeniedException("User is not an admin of the group");
+        }
+    }
+
+    /* Admins remove plain members, only the owner removes admins, and nobody removes the owner */
+    private void requireCanRemove(GroupMember caller, GroupMember target) {
+        if (!caller.isAdmin()) {
+            throw new GroupAccessDeniedException("Only admins can remove members");
+        }
+        if (target.isOwner()) {
+            throw new GroupAccessDeniedException("The owner of the group cannot be removed");
+        }
+        if (target.isAdmin() && !caller.isOwner()) {
+            throw new GroupAccessDeniedException("Only the owner can remove admins");
         }
     }
 
