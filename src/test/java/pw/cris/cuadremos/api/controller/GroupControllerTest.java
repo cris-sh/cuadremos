@@ -32,6 +32,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -248,6 +249,47 @@ class GroupControllerTest {
                 .andExpect(jsonPath("$.message").value("Invalid value for parameter 'groupId': expected type UUID"));
 
         verify(groupService, never()).getGroup(any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 204 and tells the service who hands the group to whom")
+    void passesCallerAndNewOwnerWhenTransferring() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID memberId = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/groups/{groupId}/owner", groupId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"memberId\": \"" + memberId + "\"}")
+        ).andExpect(status().isNoContent());
+
+        verify(groupService).transferOwnership(groupId, userId, memberId);
+    }
+
+    @Test
+    @DisplayName("rejects transferring ownership when no token is sent")
+    void rejectsTransferWithoutToken() throws Exception {
+        mockMvc.perform(put("/api/groups/{groupId}/owner", UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"memberId\": \"" + UUID.randomUUID() + "\"}")
+        ).andExpect(status().isUnauthorized());
+
+        verify(groupService, never()).transferOwnership(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 400 when the new owner is missing")
+    void answersBadRequestWhenNewOwnerIsMissing() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(put("/api/groups/{groupId}/owner", UUID.randomUUID())
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}")
+        ).andExpect(status().isBadRequest());
+
+        verify(groupService, never()).transferOwnership(any(), any(), any());
     }
 
 }

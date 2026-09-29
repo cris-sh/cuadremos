@@ -94,6 +94,21 @@ public class GroupService {
         groupRepository.save(group);
     }
 
+    @Transactional
+    public void transferOwnership(UUID groupId, UUID callerId, UUID targetId) {
+        Group group = findGroup(groupId);
+
+        // Check the caller first, so outsiders learn nothing about who belongs to the group
+        GroupMember caller = requireMember(group, callerId);
+        if (!caller.isOwner()) {
+            throw new GroupAccessDeniedException("Only the owner can transfer ownership");
+        }
+
+        GroupMember target = requireTarget(group, targetId);
+        group.transferOwnershipTo(target);
+        groupRepository.save(group);
+    }
+
     @Transactional(readOnly = true)
     public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = findGroup(groupId);

@@ -59,6 +59,14 @@ public class Group {
         return owner.equals(user);
     }
 
+    /* Ownership only moves to an admin, so the owner is always an admin as well */
+    public void transferOwnershipTo(GroupMember member) {
+        if (!member.isAdmin()) {
+            throw new IllegalArgumentException("Ownership can only be transferred to an admin");
+        }
+        this.owner = member.getUser();
+    }
+
     public void addMember(User user, GroupRole role) {
         members.add(GroupMember.builder()
                 .group(this)

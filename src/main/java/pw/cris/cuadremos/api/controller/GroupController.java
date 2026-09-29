@@ -6,10 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
-import pw.cris.cuadremos.application.dto.AddMemberRequest;
-import pw.cris.cuadremos.application.dto.ChangeRoleRequest;
-import pw.cris.cuadremos.application.dto.CreateGroupRequest;
-import pw.cris.cuadremos.application.dto.GroupResponse;
+import pw.cris.cuadremos.application.dto.*;
 import pw.cris.cuadremos.application.service.GroupService;
 
 import java.util.UUID;
@@ -63,6 +60,16 @@ public class GroupController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         groupService.updateMember(groupId, currentUserId(jwt), memberId, request.role());
+    }
+
+    @PutMapping("/{groupId}/owner")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void transferOwnership(
+            @PathVariable UUID groupId,
+            @Valid @RequestBody TransferOwnershipRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        groupService.transferOwnership(groupId, currentUserId(jwt), request.memberId());
     }
 
     /** The token subject carries the authenticated user's id */

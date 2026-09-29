@@ -519,6 +519,103 @@ class GroupServiceTest {
         verify(groupRepository, never()).save(any());
     }
 
+    // --- transferOwnership ---
+
+    @Test
+    @DisplayName("lets the owner hand the group over to an admin, staying on as admin")
+    void letsOwnerTransferToAdmin() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.transferOwnership(group.getId(), cris.getId(), ana.getId());
+
+        assertThat(group.isOwnedBy(ana)).isTrue();
+        assertThat(roleOf(group, cris)).isEqualTo(GroupRole.ADMIN);
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("lets the former owner leave once ownership is transferred")
+    void letsFormerOwnerLeave() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.transferOwnership(group.getId(), cris.getId(), ana.getId());
+        groupService.removeMember(group.getId(), cris.getId(), cris.getId());
+
+        assertThat(group.hasMember(cris)).isFalse();
+    }
+
+    @Test
+    @DisplayName("refuses to hand the group over to a plain member")
+    void refusesTransferToPlainMember() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.transferOwnership(group.getId(), cris.getId(), yuka.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("admin");
+
+        assertThat(group.isOwnedBy(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let an admin who is not the owner transfer ownership")
+    void refusesAdminTransferring() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.transferOwnership(group.getId(), ana.getId(), ana.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only the owner");
+
+        assertThat(group.isOwnedBy(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let someone outside the group transfer ownership")
+    void refusesOutsiderTransferring() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.transferOwnership(group.getId(), outsider.getId(), cris.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("not a member");
+
+        assertThat(group.isOwnedBy(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("fails to hand the group over to someone who is not in it")
+    void failsWhenNewOwnerIsNotAMember() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.transferOwnership(group.getId(), cris.getId(), outsider.getId()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Target");
+
+        assertThat(group.isOwnedBy(cris)).isTrue();
+        verify(groupRepository, never()).save(any());
+    }
 
     // --- getGroup ---
 
