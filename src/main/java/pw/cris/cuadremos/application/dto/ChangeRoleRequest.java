@@ -1,4 +1,9 @@
 package pw.cris.cuadremos.application.dto;
 
-public record ChangeRoleRequest() {
+import jakarta.validation.constraints.NotNull;
+import pw.cris.cuadremos.domain.model.GroupRole;
+
+public record ChangeRoleRequest(
+        @NotNull GroupRole role
+        ) {
 }

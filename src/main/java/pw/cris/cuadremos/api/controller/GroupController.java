@@ -7,6 +7,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import pw.cris.cuadremos.application.dto.AddMemberRequest;
+import pw.cris.cuadremos.application.dto.ChangeRoleRequest;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.service.GroupService;
@@ -51,6 +52,17 @@ public class GroupController {
             @AuthenticationPrincipal Jwt jwt
     ) {
         groupService.removeMember(groupId, currentUserId(jwt), memberId);
+    }
+
+    @PatchMapping("/{groupId}/members/{memberId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void updateMember(
+            @PathVariable UUID groupId,
+            @PathVariable UUID memberId,
+            @Valid @RequestBody ChangeRoleRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        groupService.updateMember(groupId, currentUserId(jwt), memberId, request.role());
     }
 
     /** The token subject carries the authenticated user's id */

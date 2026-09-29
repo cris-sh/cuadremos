@@ -73,6 +73,27 @@ public class GroupService {
         groupRepository.save(group);
     }
 
+    @Transactional
+    public void updateMember(UUID groupId, UUID callerId, UUID targetId, GroupRole newRole) {
+        Group group = findGroup(groupId);
+
+        // Check membership first, so outsiders learn nothing about who belongs to the group
+        GroupMember caller = requireMember(group, callerId);
+
+        if (!caller.isOwner()) {
+            throw new GroupAccessDeniedException("Only the owner can change member roles");
+        }
+
+        GroupMember target = requireTarget(group, targetId);
+
+        if (target.isOwner()) {
+            throw new IllegalArgumentException("Cannot change the role of the owner");
+        }
+
+        target.setRole(newRole);
+        groupRepository.save(group);
+    }
+
     @Transactional(readOnly = true)
     public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = findGroup(groupId);

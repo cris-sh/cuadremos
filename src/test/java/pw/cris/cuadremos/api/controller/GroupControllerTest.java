@@ -14,6 +14,7 @@ import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.service.GroupService;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
+import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.infrastructure.security.SecurityConfig;
 
 import java.time.Instant;
@@ -28,6 +29,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doThrow;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -39,6 +41,7 @@ class GroupControllerTest {
 
     private static final String CREATE_BODY = "{\"name\": \"Trip to Cucuta\"}";
     private static final String ADD_MEMBER_BODY = "{\"username\": \"yuka\"}";
+    private static final String PROMOTE_BODY = "{\"role\": \"ADMIN\"}";
 
     @Autowired
     private MockMvc mockMvc;
@@ -174,6 +177,77 @@ class GroupControllerTest {
                 )
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.message").value("Transfer ownership before leaving the group"));
+    }
+
+    @Test
+    @DisplayName("answers 204 and tells the service who changes which role")
+    void passesCallerTargetAndRoleWhenUpdatingMember() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID memberId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/groups/{groupId}/members/{memberId}", groupId, memberId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(PROMOTE_BODY)
+        ).andExpect(status().isNoContent());
+
+        verify(groupService).updateMember(groupId, userId, memberId, GroupRole.ADMIN);
+    }
+
+    @Test
+    @DisplayName("rejects changing a role when no token is sent")
+    void rejectsUpdatingMemberWithoutToken() throws Exception {
+        mockMvc.perform(patch("/api/groups/{groupId}/members/{memberId}", UUID.randomUUID(), UUID.randomUUID())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(PROMOTE_BODY)
+        ).andExpect(status().isUnauthorized());
+
+        verify(groupService, never()).updateMember(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 400 when the role is missing")
+    void answersBadRequestWhenRoleIsMissing() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/groups/{groupId}/members/{memberId}", UUID.randomUUID(), UUID.randomUUID())
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}")
+        ).andExpect(status().isBadRequest());
+
+        verify(groupService, never()).updateMember(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 400 when the role does not exist")
+    void answersBadRequestWhenRoleIsUnknown() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/groups/{groupId}/members/{memberId}", UUID.randomUUID(), UUID.randomUUID())
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"role\": \"SUPERADMIN\"}")
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Malformed request body"));
+
+        verify(groupService, never()).updateMember(any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 400 when a path id is not a valid UUID")
+    void answersBadRequestWhenPathIdIsNotUuid() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(get("/api/groups/{groupId}", "not-a-uuid")
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Invalid value for parameter 'groupId': expected type UUID"));
+
+        verify(groupService, never()).getGroup(any(), any());
     }
 
 }

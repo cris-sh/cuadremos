@@ -64,6 +64,10 @@ class GroupServiceTest {
         when(groupRepository.save(any(Group.class))).thenAnswer(call -> call.getArgument(0));
     }
 
+    private GroupRole roleOf(Group group, User user) {
+        return group.findMember(user.getId()).orElseThrow().getRole();
+    }
+
     // --- createGroup ---
 
     @Test
@@ -391,6 +395,130 @@ class GroupServiceTest {
 
         verify(groupRepository, never()).save(any());
     }
+
+    // --- updateMember ---
+    @Test
+    @DisplayName("lets the owner promote a plain member to admin")
+    void letsOwnerPromoteMember() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.updateMember(group.getId(), cris.getId(), yuka.getId(), GroupRole.ADMIN);
+
+        assertThat(roleOf(group, yuka)).isEqualTo(GroupRole.ADMIN);
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("lets the owner demote an admin to plain member")
+    void letsOwnerDemoteAdmin() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.updateMember(group.getId(), cris.getId(), ana.getId(), GroupRole.MEMBER);
+
+        assertThat(roleOf(group, ana)).isEqualTo(GroupRole.MEMBER);
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("accepts setting a role the member already has")
+    void acceptsSameRole() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.updateMember(group.getId(), cris.getId(), ana.getId(), GroupRole.ADMIN);
+
+        assertThat(roleOf(group, ana)).isEqualTo(GroupRole.ADMIN);
+    }
+
+    @Test
+    @DisplayName("refuses to let an admin who is not the owner change roles")
+    void refusesAdminChangingRoles() {
+        User cris = user("cris");
+        User ana = user("ana");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateMember(group.getId(), ana.getId(), yuka.getId(), GroupRole.ADMIN))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only the owner");
+
+        assertThat(roleOf(group, yuka)).isEqualTo(GroupRole.MEMBER);
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let a plain member change roles")
+    void refusesMemberChangingRoles() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateMember(group.getId(), yuka.getId(), yuka.getId(), GroupRole.ADMIN))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only the owner");
+
+        assertThat(roleOf(group, yuka)).isEqualTo(GroupRole.MEMBER);
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let someone outside the group change roles")
+    void refusesOutsiderChangingRoles() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.updateMember(group.getId(), cris.getId(), ana.getId(), GroupRole.ADMIN);
+
+        assertThat(roleOf(group, ana)).isEqualTo(GroupRole.ADMIN);
+    }
+
+    @Test
+    @DisplayName("fails to change the role of someone who is not in the group")
+    void failsWhenRoleTargetIsNotAMember() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateMember(group.getId(), cris.getId(), outsider.getId(), GroupRole.ADMIN))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Target");
+
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to change the owner's own role")
+    void refusesChangingOwnerRole() {
+        User cris = user("cris");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateMember(group.getId(), cris.getId(), cris.getId(), GroupRole.MEMBER))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("owner");
+
+        assertThat(roleOf(group, cris)).isEqualTo(GroupRole.ADMIN);
+        verify(groupRepository, never()).save(any());
+    }
+
 
     // --- getGroup ---
 
