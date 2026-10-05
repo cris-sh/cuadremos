@@ -12,6 +12,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
+import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.application.service.GroupService;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.domain.model.GroupRole;
@@ -61,6 +62,7 @@ class GroupControllerTest {
         return new GroupResponse(
                 UUID.randomUUID(),
                 "Trip to Cucuta",
+                "",
                 Set.of(),
                 Instant.now()
         );
@@ -83,7 +85,7 @@ class GroupControllerTest {
         UUID userId = UUID.randomUUID();
         when(groupService.createGroup(any(), eq(userId)))
                 .thenReturn(new GroupResponse(
-                        UUID.randomUUID(), "Trip to Cucuta", Set.of(), Instant.now()
+                        UUID.randomUUID(), "Trip to Cucuta", "", Set.of(), Instant.now()
                 ));
 
         mockMvc.perform(post("/api/groups")
@@ -290,6 +292,36 @@ class GroupControllerTest {
         ).andExpect(status().isBadRequest());
 
         verify(groupService, never()).transferOwnership(any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("tells the service who edits which group and with what")
+    void passesCallerAndChangesWhenUpdatingGroup() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(groupService.updateGroup(eq(groupId), eq(userId), any())).thenReturn(someGroup());
+
+        mockMvc.perform(patch("/api/groups/{groupId}", groupId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\": \"Beach trip\", \"icon\": \"🏖️\"}")
+        ).andExpect(status().isOk());
+
+        verify(groupService).updateGroup(groupId, userId, new UpdateGroupRequest("Beach trip", "🏖️"));
+    }
+
+    @Test
+    @DisplayName("answers 400 when the new name is too long")
+    void answersBadRequestWhenNameIsTooLong() throws Exception {
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(patch("/api/groups/{groupId}", UUID.randomUUID())
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"name\": \"" + "a".repeat(101) + "\"}")
+        ).andExpect(status().isBadRequest());
+
+        verify(groupService, never()).updateGroup(any(), any(), any());
     }
 
 }

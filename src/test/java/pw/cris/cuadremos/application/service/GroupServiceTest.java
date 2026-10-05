@@ -9,6 +9,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
+import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.GroupRole;
@@ -652,5 +653,88 @@ class GroupServiceTest {
 
         assertThatThrownBy(() -> groupService.getGroup(groupGhostId, UUID.randomUUID()))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // --- updateGroup ---
+
+    @Test
+    @DisplayName("lets an admin rename the group and set its icon")
+    void letsAdminEditGroup() {
+        User cris = user("cris");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+        saveReturnsItsArgument();
+
+        GroupResponse response = groupService.updateGroup(
+                group.getId(), cris.getId(), new UpdateGroupRequest("  Beach trip  ", "🏖️")
+        );
+
+        assertThat(response.name()).isEqualTo("Beach trip");
+        assertThat(response.icon()).isEqualTo("🏖️");
+    }
+
+    @Test
+    @DisplayName("keeps the fields that were not sent")
+    void keepsFieldsNotSent() {
+        User cris = user("cris");
+        Group group = group(cris);
+        group.changeIcon("🏖️");
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+        saveReturnsItsArgument();
+
+        GroupResponse response = groupService.updateGroup(
+                group.getId(), cris.getId(), new UpdateGroupRequest("Beach trip", null)
+        );
+
+        assertThat(response.name()).isEqualTo("Beach trip");
+        assertThat(response.icon()).isEqualTo("🏖️");
+    }
+
+    @Test
+    @DisplayName("removes the icon when an empty one is sent")
+    void removesIconWhenEmpty() {
+        User cris = user("cris");
+        Group group = group(cris);
+        group.changeIcon("🏖️");
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+        saveReturnsItsArgument();
+
+        GroupResponse response = groupService.updateGroup(
+                group.getId(), cris.getId(), new UpdateGroupRequest(null, "")
+        );
+
+        assertThat(response.name()).isEqualTo("trip to Cucuta");
+        assertThat(response.icon()).isNull();
+    }
+
+    @Test
+    @DisplayName("refuses a name made only of spaces")
+    void refusesBlankName() {
+        User cris = user("cris");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateGroup(
+                group.getId(), cris.getId(), new UpdateGroupRequest("   ", null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("blank");
+
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to let a plain member edit the group")
+    void refusesMemberEditingGroup() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateGroup(
+                group.getId(), yuka.getId(), new UpdateGroupRequest("Hacked", null)))
+                .isInstanceOf(GroupAccessDeniedException.class);
+
+        assertThat(group.getName()).isEqualTo("trip to Cucuta");
+        verify(groupRepository, never()).save(any());
     }
 }

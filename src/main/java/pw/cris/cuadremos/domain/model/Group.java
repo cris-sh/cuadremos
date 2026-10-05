@@ -25,6 +25,10 @@ public class Group {
     @Column(nullable = false)
     private String name;
 
+    /* Optional emoji shown next to the name */
+    @Column(length = 16)
+    private String icon;
+
     /* The owner is always an admin as well; ownership only adds owner-only powers on top */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "owner_id", nullable = false)
@@ -53,6 +57,18 @@ public class Group {
                 .build();
         group.addMember(owner, GroupRole.ADMIN);
         return group;
+    }
+
+    public void rename(String name) {
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("Group name cannot be blank");
+        }
+        this.name = name.strip();
+    }
+
+    /* A blank icon removes it, so there is always a way back to no icon */
+    public void changeIcon(String icon) {
+        this.icon = icon.isBlank() ? null : icon.strip();
     }
 
     public boolean isOwnedBy(User user) {

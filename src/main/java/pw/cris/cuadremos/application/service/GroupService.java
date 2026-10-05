@@ -6,6 +6,7 @@ import org.springframework.transaction.annotation.Transactional;
 import pw.cris.cuadremos.application.dto.CreateGroupRequest;
 import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
+import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.GroupMember;
@@ -109,6 +110,22 @@ public class GroupService {
         groupRepository.save(group);
     }
 
+    @Transactional
+    public GroupResponse updateGroup(UUID groupId, UUID callerId, UpdateGroupRequest request) {
+        Group group = findGroup(groupId);
+        requireAdmin(group, callerId);
+
+        // Only the fields that were sent change; the rest keep their current value
+        if (request.name() != null) {
+            group.rename(request.name());
+        }
+        if (request.icon() != null) {
+            group.changeIcon(request.icon());
+        }
+
+        return toResponse(groupRepository.save(group));
+    }
+
     @Transactional(readOnly = true)
     public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = findGroup(groupId);
@@ -166,6 +183,7 @@ public class GroupService {
         return new GroupResponse(
                 group.getId(),
                 group.getName(),
+                group.getIcon(),
                 members,
                 group.getCreatedAt()
         );

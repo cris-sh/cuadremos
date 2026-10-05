@@ -41,6 +41,15 @@ public class GroupController {
         return groupService.getGroup(groupId, currentUserId(jwt));
     }
 
+    @PatchMapping("/{groupId}")
+    public GroupResponse updateGroup(
+            @PathVariable UUID groupId,
+            @Valid @RequestBody UpdateGroupRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        return groupService.updateGroup(groupId, currentUserId(jwt), request);
+    }
+
     @DeleteMapping("/{groupId}/members/{memberId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeMember(
