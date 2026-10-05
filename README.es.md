@@ -33,7 +33,9 @@ Cuadremos nació como un proyecto personal para aprender ingeniería backend con
 |---|---|
 | 🔐 Registro y login con JWT | ✅ Listo |
 | 👥 Grupos con dueño, admins y miembros | ✅ Listo |
-| 🛡️ Permisos dentro del grupo | 🚧 En progreso |
+| 🛡️ Permisos dentro del grupo | ✅ Listo |
+| ✏️ Editar y archivar grupos | ✅ Listo |
+| 📨 Invitaciones (aceptar antes de entrar a un grupo) | 🚧 Siguiente |
 | 💰 Gastos (división igual, exacta y por porcentaje) | 🗺️ Planeado |
 | ⚖️ Balances y "quién le debe a quién" | 🗺️ Planeado |
 | 💸 Sugerencias de pago con mínimo de transferencias | 🗺️ Planeado |
@@ -92,7 +94,9 @@ erDiagram
     GROUPS {
         uuid id PK
         varchar name
+        varchar icon "emoji opcional"
         uuid owner_id FK
+        timestamptz archived_at "null mientras está activo"
     }
     GROUP_MEMBERS {
         uuid id PK
@@ -107,6 +111,24 @@ erDiagram
     }
 ```
 
+## 👥 Roles en un grupo
+
+Cada grupo tiene exactamente un **dueño**, que además siempre es admin.
+
+| Acción | Miembro | Admin | Dueño |
+|---|:---:|:---:|:---:|
+| Ver el grupo | ✅ | ✅ | ✅ |
+| Salirse del grupo | ✅ | ✅ | ❌ primero traspasa la propiedad |
+| Agregar miembros | | ✅ | ✅ |
+| Sacar miembros comunes | | ✅ | ✅ |
+| Cambiar el nombre o el ícono | | ✅ | ✅ |
+| Sacar admins | | | ✅ |
+| Dar o quitar el rol de admin | | | ✅ |
+| Traspasar la propiedad (a un admin) | | | ✅ |
+| Archivar el grupo | | | ✅ |
+
+Un grupo **archivado** queda en solo lectura: los miembros lo siguen viendo, pero cualquier cambio responde `409 Conflict`. Nunca se borra nada, así que el historial del grupo se conserva.
+
 ## 🔌 API
 
 | Método | Endpoint | Auth | Descripción |
@@ -115,7 +137,14 @@ erDiagram
 | `POST` | `/api/auth/login` | — | Obtener un token JWT |
 | `POST` | `/api/groups` | 🔑 | Crear un grupo (quedas como dueño) |
 | `GET` | `/api/groups/{groupId}` | 🔑 | Ver un grupo y sus miembros |
+| `PATCH` | `/api/groups/{groupId}` | 🔑 | Cambiar el nombre o el ícono (`""` lo quita) |
+| `DELETE` | `/api/groups/{groupId}` | 🔑 | Archivar un grupo |
 | `POST` | `/api/groups/{groupId}/members` | 🔑 | Agregar un miembro por username |
+| `PATCH` | `/api/groups/{groupId}/members/{memberId}` | 🔑 | Cambiar el rol de un miembro (`ADMIN` / `MEMBER`) |
+| `DELETE` | `/api/groups/{groupId}/members/{memberId}` | 🔑 | Sacar a un miembro, o salirte con tu propio id |
+| `PUT` | `/api/groups/{groupId}/owner` | 🔑 | Traspasar la propiedad a un admin |
+
+Todos los errores tienen la misma forma (`timestamp`, `status`, `error`, `message`) y usan `400` para datos inválidos, `401` sin un token válido, `403` cuando tu rol no permite la acción y `409` cuando el grupo está archivado.
 
 <details>
 <summary><b>Pruébalo con curl</b></summary>
@@ -137,6 +166,12 @@ curl -X POST localhost:8080/api/groups \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
   -d '{"name":"Viaje a Cúcuta"}'
+
+# 4. Ponerle un ícono (los campos que no envíes se quedan igual)
+curl -X PATCH localhost:8080/api/groups/<groupId> \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"icon":"🏖️"}'
 ```
 
 Cada miembro viene con su `role` y un campo `owner`, para que el cliente pueda mostrar al dueño como un admin con 👑:
@@ -145,10 +180,12 @@ Cada miembro viene con su `role` y un campo `owner`, para que el cliente pueda m
 {
   "id": "5f0c…",
   "name": "Viaje a Cúcuta",
+  "icon": "🏖️",
   "members": [
     { "id": "9a1e…", "username": "cris", "name": "Cristian", "role": "ADMIN", "owner": true }
   ],
-  "createdAt": "2026-09-25T18:30:00Z"
+  "createdAt": "2026-09-25T18:30:00Z",
+  "archivedAt": null
 }
 ```
 
@@ -182,21 +219,6 @@ JWT_SECRET=cambia-esto-por-un-secreto-largo-y-aleatorio
 ```
 
 Flyway crea las tablas al primer arranque, y la API queda en `http://localhost:8080`.
-```properties
-DATABASE_URL=jdbc:postgresql://localhost:5432/cuadremos
-DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=postgres
-# Mínimo 32 bytes. Genera uno con: openssl rand -base64 64
-JWT_SECRET=cambia-esto-por-un-secreto-largo-y-aleatorio
-```
-
-**3. Arrancar**
-
-```bash
-./mvnw spring-boot:run
-```
-
-Flyway crea las tablas al primer arranque, y la API queda en `http://localhost:8080`.
 
 **4. Tests**
 
@@ -213,14 +235,24 @@ Flyway crea las tablas al primer arranque, y la API queda en `http://localhost:8
 - **Autenticación JWT sin sesiones.** Los tokens se firman con HS256 y llevan el id del usuario como `subject`, así que el servidor no guarda sesiones. Duran una hora.
 - **Identidades normalizadas.** Usernames y emails se pasan a minúsculas antes de validarse y guardarse, así que `Cris` y `cris` nunca pueden ser dos cuentas.
 - **La membresía es una entidad; la propiedad, una columna.** `group_members` guarda el rol de cada miembro, y `groups.owner_id` garantiza exactamente un dueño por grupo. Por eso traspasar la propiedad es un solo cambio.
+- **Archivar, nunca borrar.** Un grupo guarda historial de plata compartida, así que el dueño lo archiva en vez de borrarlo. Un grupo archivado se puede seguir leyendo y rechaza cualquier cambio.
+- **Primero permisos, después estado.** Cada cambio revisa quién lo pide antes de revisar si el grupo está archivado, así que alguien de afuera recibe `403` y no se entera de nada del grupo.
+- **Solo tokens Bearer, así que no hay CSRF.** La API solo lee credenciales del header `Authorization` y nunca crea cookies, así que una petición falsificada desde otro sitio no tiene con qué autenticarse.
 - **Las entidades se comparan por id.** `User` implementa `equals`/`hashCode` por su id de base de datos, así que los conjuntos de miembros funcionan bien entre transacciones.
 - **El esquema es código.** Cada cambio es una migración versionada de Flyway, y Hibernate solo *valida* el esquema; nunca lo modifica.
 - **Errores de login genéricos a propósito.** Un login fallido nunca revela si el usuario existe.
 
+## 🔒 Notas de seguridad para quien la integre
+
+Cuadremos está protegida contra CSRF porque el navegador nunca adjunta un token Bearer por su cuenta. Si tu cliente guarda el token en algo que el navegador *sí* envía solo (por ejemplo, una app Next.js que lo guarda en una cookie de sesión y lo reenvía desde el servidor), los endpoints de tu app necesitan protección CSRF: usa la cookie con `SameSite=Lax` o `Strict`, revisa el header `Origin` en tus route handlers y nunca modifiques datos con `GET`.
+
+Los tokens duran una hora. Nunca los pongas en URLs ni en logs.
+
 ## 🗺️ Hoja de ruta
 
 - [x] **Fase 1 — Auth:** registro, login con JWT, endpoints protegidos
-- [ ] **Fase 1 — Grupos:** roles y dueño ✅, permisos, sacar miembros, ascender admins, traspaso de propiedad, archivar
+- [x] **Fase 1 — Grupos:** roles y dueño, permisos, sacar miembros, ascender admins, traspaso de propiedad, editar, archivar
+- [ ] **Fase 1 — Invitaciones:** el usuario acepta o rechaza antes de entrar a un grupo
 - [ ] **Fase 2 — Gastos:** división igual, exacta y por porcentaje; las partes siempre suman exacto al centavo
 - [ ] **Fase 3 — Balances:** balance neto por miembro y minimización de deudas
 - [ ] **Fase 4 — Producción:** Testcontainers, documentación OpenAPI, Docker Compose, logs estructurados

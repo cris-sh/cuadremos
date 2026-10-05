@@ -32,8 +32,10 @@ Cuadremos started as a personal project to learn backend engineering by building
 |--------------------------------------------------|----------------|
 | 🔐 Registration & JWT login                      | ✅ Done         |
 | 👥 Groups with owner, admins and members         | ✅ Done         |
-| 🛡️ Group-level permissions                      | 🚧 In progress |
-| 💰 Expenses (equal, exact adn percentage splits) | 🗺️ Planned    |
+| 🛡️ Group-level permissions                      | ✅ Done         |
+| ✏️ Edit and archive groups                       | ✅ Done         |
+| 📨 Invitations (consent before joining a group)  | 🚧 Next         |
+| 💰 Expenses (equal, exact and percentage splits) | 🗺️ Planned    |
 | ⚖️ Balances & "who owes whom"                    | 🗺️ Planned    |
 | 💸 Settle-up suggestions with debt minimization  | 🗺️ Planned    |
 
@@ -42,7 +44,7 @@ Cuadremos started as a personal project to learn backend engineering by building
 |---|------------------------------------------------------------------|
 | Language & Framework | Java 21 · Spring Boot 4.1 · Spring Web MVC                       |
 | Security | Spring Security · OAuth2 Resource Server (JWT, HS256) · Argon2id |
-| Persistence | Spring Data JPA                                                  | Hibernate | PostgreSQL · Flyway |
+| Persistence | Spring Data JPA · Hibernate · PostgreSQL · Flyway                |
 | Testing | JUnit 5 · Mockito · AssertJ · MockMvc · Spring Security Test     |
 | Tooling | Maven · Lombok · GitHub Actions · Dependabot |
 
@@ -90,7 +92,9 @@ erDiagram
     GROUPS {
         uuid id PK
         varchar name
+        varchar icon "optional emoji"
         uuid owner_id FK
+        timestamptz archived_at "null while active"
     }
     GROUP_MEMBERS {
         uuid id PK
@@ -105,6 +109,24 @@ erDiagram
     }
 ```
 
+## 👥 Group roles
+
+Every group has exactly one **owner**, who is always an admin too.
+
+| Action | Member | Admin | Owner |
+|---|:---:|:---:|:---:|
+| View the group | ✅ | ✅ | ✅ |
+| Leave the group | ✅ | ✅ | ❌ transfer ownership first |
+| Add members | | ✅ | ✅ |
+| Remove plain members | | ✅ | ✅ |
+| Rename the group or change its icon | | ✅ | ✅ |
+| Remove admins | | | ✅ |
+| Grant or revoke admin | | | ✅ |
+| Transfer ownership (to an admin) | | | ✅ |
+| Archive the group | | | ✅ |
+
+An **archived** group is read-only: members can still see it, but every change answers `409 Conflict`. Nothing is ever deleted, so the group's history survives.
+
 ## 🔌 API
 
 | Method | Endpoint | Auth | Description |
@@ -113,7 +135,14 @@ erDiagram
 | `POST` | `/api/auth/login` | — | Get a JWT access token |
 | `POST` | `/api/groups` | 🔑 | Create a group (you become its owner) |
 | `GET` | `/api/groups/{groupId}` | 🔑 | Get a group and its members |
+| `PATCH` | `/api/groups/{groupId}` | 🔑 | Rename a group or change its icon (`""` removes it) |
+| `DELETE` | `/api/groups/{groupId}` | 🔑 | Archive a group |
 | `POST` | `/api/groups/{groupId}/members` | 🔑 | Add a member by username |
+| `PATCH` | `/api/groups/{groupId}/members/{memberId}` | 🔑 | Change a member's role (`ADMIN` / `MEMBER`) |
+| `DELETE` | `/api/groups/{groupId}/members/{memberId}` | 🔑 | Remove a member, or leave with your own id |
+| `PUT` | `/api/groups/{groupId}/owner` | 🔑 | Transfer ownership to an admin |
+
+Errors share one shape (`timestamp`, `status`, `error`, `message`) and use `400` for invalid input, `401` without a valid token, `403` when your role does not allow the action, and `409` when the group is archived.
 
 <details>
 <summary><b>Try it with curl</b></summary>
@@ -135,6 +164,12 @@ curl -X POST localhost:8080/api/groups \
   -H "Authorization: Bearer <accessToken>" \
   -H "Content-Type: application/json" \
   -d '{"name":"Trip to Cúcuta"}'
+
+# 4. Give it an icon (fields you leave out keep their value)
+curl -X PATCH localhost:8080/api/groups/<groupId> \
+  -H "Authorization: Bearer <accessToken>" \
+  -H "Content-Type: application/json" \
+  -d '{"icon":"🏖️"}'
 ```
 
 Every member comes back with a `role` and an `owner` flag, so a client can show the owner as an admin with a 👑:
@@ -143,10 +178,12 @@ Every member comes back with a `role` and an `owner` flag, so a client can show 
 {
   "id": "5f0c…",
   "name": "Trip to Cúcuta",
+  "icon": "🏖️",
   "members": [
     { "id": "9a1e…", "username": "cris", "name": "Cristian", "role": "ADMIN", "owner": true }
   ],
-  "createdAt": "2026-09-25T18:30:00Z"
+  "createdAt": "2026-09-25T18:30:00Z",
+  "archivedAt": null
 }
 ```
 
@@ -196,14 +233,24 @@ Flyway creates the schema on first start, and the API listens on `http://localho
 - **Stateless JWT auth.** Tokens are signed with HS256 and carry the user id as their subject, so no session is stored server-side. Tokens expire after one hour.
 - **Normalised identities.** Usernames and emails are lowercased before they are checked and stored, so `Cris` and `cris` can never become two accounts.
 - **Membership is an entity, ownership is a column.** `group_members` carries each member's role, while `groups.owner_id` guarantees exactly one owner per group and makes ownership transfers a single update.
+- **Archive, never delete.** Groups hold shared money history, so the owner archives them instead of deleting them. An archived group stays readable and rejects every change.
+- **Permissions before state.** Every change checks who is asking before it checks whether the group is archived, so an outsider gets `403` and learns nothing about the group.
+- **Bearer tokens only, so no CSRF.** The API reads credentials only from the `Authorization` header and never sets cookies, so a forged cross-site request has nothing to ride on.
 - **Entities compare by id.** `User` implements `equals`/`hashCode` by database id, so sets of members behave correctly across transactions.
 - **The schema is code.** Every change is a versioned Flyway migration, and Hibernate only *validates* the schema; it never alters it.
 - **Deliberately vague auth errors.** A failed login never reveals whether the username exists.
 
+## 🔒 Security notes for integrators
+
+Cuadremos is safe against CSRF because browsers never attach a Bearer token on their own. If your client keeps the token somewhere the browser *does* send automatically (for example, a Next.js app that stores it in a session cookie and forwards it from the server), your app's own endpoints need CSRF protection: set the cookie to `SameSite=Lax` or `Strict`, check the `Origin` header in custom route handlers, and never change data on `GET`.
+
+Tokens last one hour. Keep them out of URLs and logs.
+
 ## 🗺️ Roadmap
 
 - [x] **Phase 1 — Auth:** registration, JWT login, locked-down endpoints
-- [ ] **Phase 1 — Groups:** roles and ownership ✅, permissions, removing members, promoting admins, ownership transfer, archiving
+- [x] **Phase 1 — Groups:** roles and ownership, permissions, removing members, promoting admins, ownership transfer, editing, archiving
+- [ ] **Phase 1 — Invitations:** users accept or decline before they join a group
 - [ ] **Phase 2 — Expenses:** equal, exact and percentage splits; shares always add up to the cent
 - [ ] **Phase 3 — Balances:** net balance per member and greedy debt minimization
 - [ ] **Phase 4 — Production:** Testcontainers, OpenAPI docs, Docker Compose, structured logging
