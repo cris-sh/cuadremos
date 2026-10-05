@@ -11,6 +11,7 @@ import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
 import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
+import pw.cris.cuadremos.domain.exception.GroupArchivedException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.domain.model.User;
@@ -736,5 +737,110 @@ class GroupServiceTest {
 
         assertThat(group.getName()).isEqualTo("trip to Cucuta");
         verify(groupRepository, never()).save(any());
+    }
+
+    // --- archiveGroup ---
+
+    @Test
+    @DisplayName("lets the owner archive the group")
+    void letsOwnerArchiveGroup() {
+        User cris = user("cris");
+        Group group = group(cris);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        groupService.archiveGroup(group.getId(), cris.getId());
+
+        assertThat(group.isArchived()).isTrue();
+        verify(groupRepository).save(group);
+    }
+
+    @Test
+    @DisplayName("refuses to let an admin who is not the owner archive the group")
+    void refusesAdminArchivingGroup() {
+        User cris = user("cris");
+        User ana = user("ana");
+        Group group = group(cris);
+        group.addMember(ana, GroupRole.ADMIN);
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.archiveGroup(group.getId(), ana.getId()))
+                .isInstanceOf(GroupAccessDeniedException.class)
+                .hasMessageContaining("Only the owner");
+
+        assertThat(group.isArchived()).isFalse();
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to archive a group that is already archived")
+    void refusesArchivingTwice() {
+        User cris = user("cris");
+        Group group = group(cris);
+        group.archive();
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.archiveGroup(group.getId(), cris.getId()))
+                .isInstanceOf(GroupArchivedException.class);
+
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("still shows an archived group to its members")
+    void stillShowsArchivedGroup() {
+        User cris = user("cris");
+        User yuka = user("yuka");
+        Group group = group(cris, yuka);
+        group.archive();
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        GroupResponse response = groupService.getGroup(group.getId(), yuka.getId());
+
+        assertThat(response.archivedAt()).isNotNull();
+    }
+
+    @Test
+    @DisplayName("refuses to edit an archived group")
+    void refusesEditingArchivedGroup() {
+        User cris = user("cris");
+        Group group = group(cris);
+        group.archive();
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateGroup(
+                group.getId(), cris.getId(), new UpdateGroupRequest("New name", null)))
+                .isInstanceOf(GroupArchivedException.class);
+
+        assertThat(group.getName()).isEqualTo("trip to Cucuta");
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("refuses to add members to an archived group")
+    void refusesAddingMemberToArchivedGroup() {
+        User cris = user("cris");
+        Group group = group(cris);
+        group.archive();
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.addMember(group.getId(), cris.getId(), "yuka"))
+                .isInstanceOf(GroupArchivedException.class);
+
+        verify(userRepository, never()).findByUsername(anyString());
+        verify(groupRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("tells an outsider they are not a member, even when the group is archived")
+    void checksMembershipBeforeArchived() {
+        User cris = user("cris");
+        User outsider = user("outsider");
+        Group group = group(cris);
+        group.archive();
+        when(groupRepository.findById(group.getId())).thenReturn(Optional.of(group));
+
+        assertThatThrownBy(() -> groupService.updateGroup(
+                group.getId(), outsider.getId(), new UpdateGroupRequest("Hacked", null)))
+                .isInstanceOf(GroupAccessDeniedException.class);
     }
 }

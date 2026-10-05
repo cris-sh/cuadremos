@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import pw.cris.cuadremos.domain.exception.EmailAlreadyExistsException;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
+import pw.cris.cuadremos.domain.exception.GroupArchivedException;
 import pw.cris.cuadremos.domain.exception.UsernameAlreadyExistsException;
 
 import org.springframework.security.core.AuthenticationException;
@@ -73,6 +74,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> handleUnreadableBody(HttpMessageNotReadableException ex) {
         return buildErrorResponse(HttpStatus.BAD_REQUEST, "Malformed request body");
+    }
+
+    @ExceptionHandler(GroupArchivedException.class)
+    public ResponseEntity<Map<String, Object>> handleGroupArchived(GroupArchivedException ex) {
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)

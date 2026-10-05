@@ -50,6 +50,12 @@ public class GroupController {
         return groupService.updateGroup(groupId, currentUserId(jwt), request);
     }
 
+    @DeleteMapping("/{groupId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void archiveGroup(@PathVariable UUID groupId, @AuthenticationPrincipal Jwt jwt) {
+        groupService.archiveGroup(groupId, currentUserId(jwt));
+    }
+
     @DeleteMapping("/{groupId}/members/{memberId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removeMember(

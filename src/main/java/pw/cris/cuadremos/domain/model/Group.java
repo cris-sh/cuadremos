@@ -41,6 +41,9 @@ public class Group {
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
+    /* Set when the owner archives the group: members can still read it, nobody can change it */
+    private Instant archivedAt;
+
     @PrePersist
     protected void onCreate() {
         this.createdAt = Instant.now();
@@ -69,6 +72,14 @@ public class Group {
     /* A blank icon removes it, so there is always a way back to no icon */
     public void changeIcon(String icon) {
         this.icon = icon.isBlank() ? null : icon.strip();
+    }
+
+    public void archive() {
+        this.archivedAt = Instant.now();
+    }
+
+    public boolean isArchived() {
+        return archivedAt != null;
     }
 
     public boolean isOwnedBy(User user) {

@@ -9,5 +9,6 @@ public record GroupResponse(
         String name,
         String icon,
         Set<MemberResponse> members,
-        Instant createdAt
+        Instant createdAt,
+        Instant archivedAt
 ) {}

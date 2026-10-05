@@ -15,6 +15,7 @@ import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.application.service.GroupService;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
+import pw.cris.cuadremos.domain.exception.GroupArchivedException;
 import pw.cris.cuadremos.domain.model.GroupRole;
 import pw.cris.cuadremos.infrastructure.security.SecurityConfig;
 
@@ -64,7 +65,8 @@ class GroupControllerTest {
                 "Trip to Cucuta",
                 "",
                 Set.of(),
-                Instant.now()
+                Instant.now(),
+                null
         );
     }
 
@@ -85,7 +87,7 @@ class GroupControllerTest {
         UUID userId = UUID.randomUUID();
         when(groupService.createGroup(any(), eq(userId)))
                 .thenReturn(new GroupResponse(
-                        UUID.randomUUID(), "Trip to Cucuta", "", Set.of(), Instant.now()
+                        UUID.randomUUID(), "Trip to Cucuta", "", Set.of(), Instant.now(), null
                 ));
 
         mockMvc.perform(post("/api/groups")
@@ -323,5 +325,45 @@ class GroupControllerTest {
 
         verify(groupService, never()).updateGroup(any(), any(), any());
     }
+
+    @Test
+    @DisplayName("answers 204 and tells the service who archives which group")
+    void passesCallerWhenArchivingGroup() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        mockMvc.perform(delete("/api/groups/{groupId}", groupId)
+                .with(jwt().jwt(token -> token.subject(userId.toString())))
+        ).andExpect(status().isNoContent());
+
+        verify(groupService).archiveGroup(groupId, userId);
+    }
+
+    @Test
+    @DisplayName("rejects archiving a group when no token is sent")
+    void rejectsArchivingWithoutToken() throws Exception {
+        mockMvc.perform(delete("/api/groups/{groupId}", UUID.randomUUID()))
+                .andExpect(status().isUnauthorized());
+
+        verify(groupService, never()).archiveGroup(any(), any());
+    }
+
+    @Test
+    @DisplayName("answers 409 when the group is archived")
+    void answersConflictWhenGroupIsArchived() throws Exception {
+        UUID groupId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        when(groupService.updateGroup(eq(groupId), eq(userId), any()))
+                .thenThrow(new GroupArchivedException("Group is archived and can no longer be changed"));
+
+        mockMvc.perform(patch("/api/groups/{groupId}", groupId)
+                        .with(jwt().jwt(token -> token.subject(userId.toString())))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\": \"Beach trip\"}")
+                )
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.message").value("Group is archived and can no longer be changed"));
+    }
+
 
 }

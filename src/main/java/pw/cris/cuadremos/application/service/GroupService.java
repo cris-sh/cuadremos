@@ -8,6 +8,7 @@ import pw.cris.cuadremos.application.dto.GroupResponse;
 import pw.cris.cuadremos.application.dto.MemberResponse;
 import pw.cris.cuadremos.application.dto.UpdateGroupRequest;
 import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
+import pw.cris.cuadremos.domain.exception.GroupArchivedException;
 import pw.cris.cuadremos.domain.model.Group;
 import pw.cris.cuadremos.domain.model.GroupMember;
 import pw.cris.cuadremos.domain.model.GroupRole;
@@ -44,6 +45,7 @@ public class GroupService {
 
         // Check permissions first, so outsiders learn nothing about which usernames exist
         requireAdmin(group, callerId);
+        requireActive(group);
 
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new IllegalArgumentException("User not found with username: " + username));
@@ -62,6 +64,7 @@ public class GroupService {
 
         // Check membership first, so outsiders learn nothing about who belongs to the group
         GroupMember caller = requireMember(group, callerId);
+        requireActive(group);
         GroupMember target = requireTarget(group, targetId);
 
         if (!callerId.equals(targetId)) {
@@ -85,6 +88,7 @@ public class GroupService {
             throw new GroupAccessDeniedException("Only the owner can change member roles");
         }
 
+        requireActive(group);
         GroupMember target = requireTarget(group, targetId);
 
         if (target.isOwner()) {
@@ -105,6 +109,7 @@ public class GroupService {
             throw new GroupAccessDeniedException("Only the owner can transfer ownership");
         }
 
+        requireActive(group);
         GroupMember target = requireTarget(group, targetId);
         group.transferOwnershipTo(target);
         groupRepository.save(group);
@@ -114,6 +119,7 @@ public class GroupService {
     public GroupResponse updateGroup(UUID groupId, UUID callerId, UpdateGroupRequest request) {
         Group group = findGroup(groupId);
         requireAdmin(group, callerId);
+        requireActive(group);
 
         // Only the fields that were sent change; the rest keep their current value
         if (request.name() != null) {
@@ -126,6 +132,21 @@ public class GroupService {
         return toResponse(groupRepository.save(group));
     }
 
+    @Transactional
+    public void archiveGroup(UUID groupId, UUID callerId) {
+        Group group = findGroup(groupId);
+
+        // Check the caller first, so outsiders learn nothing about the group
+        GroupMember caller = requireMember(group, callerId);
+        if (!caller.isOwner()) {
+            throw new GroupAccessDeniedException("Only the owner can archive the group");
+        }
+
+        requireActive(group);
+        group.archive();
+        groupRepository.save(group);
+    }
+
     @Transactional(readOnly = true)
     public GroupResponse getGroup(UUID groupId, UUID callerId) {
         Group group = findGroup(groupId);
@@ -136,6 +157,13 @@ public class GroupService {
     private Group findGroup(UUID groupId) {
         return groupRepository.findById(groupId)
                 .orElseThrow(() -> new IllegalArgumentException("Group not found with id: " + groupId));
+    }
+
+    /* Every change goes through here; it runs after the permissions checks on purpose */
+    private void requireActive(Group group) {
+        if (group.isArchived()) {
+            throw new GroupArchivedException("Group is archived and can no longer be changed");
+        }
     }
 
     private GroupMember requireMember(Group group, UUID userId) {
@@ -185,7 +213,8 @@ public class GroupService {
                 group.getName(),
                 group.getIcon(),
                 members,
-                group.getCreatedAt()
+                group.getCreatedAt(),
+                group.getArchivedAt()
         );
     }
 }
