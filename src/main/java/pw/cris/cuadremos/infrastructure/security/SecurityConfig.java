@@ -45,6 +45,11 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+                /**
+                 * CSRF protection guards cookie-based sessions. This API is stateless and
+                 * authenticates every request with a Bearer token the client attaches itself,
+                 * so a forged cross-site request carries no credentials to abuse.
+                 */
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
