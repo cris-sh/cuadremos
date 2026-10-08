@@ -8,10 +8,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
-import pw.cris.cuadremos.domain.exception.EmailAlreadyExistsException;
-import pw.cris.cuadremos.domain.exception.GroupAccessDeniedException;
-import pw.cris.cuadremos.domain.exception.GroupArchivedException;
-import pw.cris.cuadremos.domain.exception.UsernameAlreadyExistsException;
+import pw.cris.cuadremos.domain.exception.*;
 
 import org.springframework.security.core.AuthenticationException;
 import java.time.Instant;
@@ -78,6 +75,11 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(GroupArchivedException.class)
     public ResponseEntity<Map<String, Object>> handleGroupArchived(GroupArchivedException ex) {
+        return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
+    }
+
+    @ExceptionHandler(InvitationNotPendingException.class)
+    public ResponseEntity<Map<String, Object>> handleInvitationNotPending(InvitationNotPendingException ex) {
         return buildErrorResponse(HttpStatus.CONFLICT, ex.getMessage());
     }
 
